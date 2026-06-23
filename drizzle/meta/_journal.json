@@ -15,6 +15,13 @@
       "when": 1782119365568,
       "tag": "0001_productive_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1782179536600,
+      "tag": "0002_mature_susan_delgado",
+      "breakpoints": true
     }
   ]
 }
