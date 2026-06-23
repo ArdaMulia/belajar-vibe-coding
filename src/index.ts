@@ -13,7 +13,7 @@ const app = new Elysia()
       return { success: false, error: error.message };
     }
   })
-  .group("/api/users", (app) => app.use(usersRoute))
+  .use(usersRoute)
   .listen(3000);
 
 console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
