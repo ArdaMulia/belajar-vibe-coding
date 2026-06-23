@@ -95,4 +95,14 @@ export class UsersService {
 
     return result;
   }
+
+  static async logout(token: string) {
+    const result = await db.delete(sessions).where(eq(sessions.token, token));
+
+    if (result[0].affectedRows === 0) {
+      throw new Error("Unauthorized");
+    }
+
+    return true;
+  }
 }
