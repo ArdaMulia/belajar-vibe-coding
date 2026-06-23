@@ -1,51 +1,40 @@
-# Implementasi Fitur Login User & Manajemen Session
+# Implementasi API Get Current User
 
 ## Deskripsi Tugas
 
-Kita akan membuat fitur untuk autentikasi login user. User akan login menggunakan email dan password, lalu sistem akan memvalidasi data tersebut. Jika valid, sistem akan menghasilkan token (berupa UUID), menyimpan token tersebut beserta relasi user ke tabel `sessions` di database, dan merespons dengan token tersebut.
+Kita akan membuat fitur untuk mendapatkan data user yang saat ini sedang login (get current user). Sistem akan memvalidasi request berdasarkan token autentikasi yang dikirim melalui HTTP Headers (`Authorization: Bearer <token>`). Jika token valid dan ditemukan di database (tabel `sessions` yang merujuk ke tabel `users`), maka sistem akan mengembalikan data profil user tersebut.
 
-## 1. Spesifikasi Database
+## 1. Spesifikasi API Endpoint
 
-Buatkan tabel baru bernama `sessions` dengan struktur kolom sebagai berikut:
+Buat endpoint baru untuk proses mendapatkan data user saat ini:
 
-- `id` : integer, Primary Key, Auto Increment
-- `token` : varchar(255), Not Null, (akan diisi dengan UUID hasil generate saat login sukses)
-- `user_id` : integer, Foreign Key yang merujuk ke tabel `users` (id)
-- `created_at` : timestamp, default ke current_timestamp
-
-## 2. Spesifikasi API Endpoint
-
-Buat endpoint baru untuk proses login:
-
-- **Endpoint:** `POST /api/users/login`
-- **Request Body (JSON):**
+- **Endpoint:** `GET /api/users/current`
+- **Headers:**
+  - `Authorization`: `Bearer <token>` (di mana `<token>` adalah token UUID milik user yang didapatkan saat login sebelumnya)
+- **Response Body (Berhasil - HTTP Status 200):**
   ```json
   {
-    "email": "arda@localhost",
-    "password": "rahasia"
+    "data": {
+      "id": 1,
+      "name": "Arda",
+      "email": "arda@localhost",
+      "created_at": "2026-06-23T10:00:00.000Z"
+    }
   }
   ```
-- **Response Body (Berhasil - HTTP Status 200/201):**
+- **Response Body (Gagal - HTTP Status 401 Unauthorized):**
   ```json
   {
-    "data": "token-berupa-uuid-disini"
-  }
-  ```
-- **Response Body (Gagal - HTTP Status 400/401):**
-  ```json
-  {
-    "error": "Email atau password salah"
+    "error": "Unauthorized"
   }
   ```
 
-## 3. Struktur Folder dan File
+## 2. Struktur Folder dan File
 
-Implementasikan kode dengan memisahkannya berdasarkan tanggung jawab (Separation of Concerns). Struktur kode ada di dalam folder `src/`:
+Pekerjaan difokuskan pada file-file berikut di dalam folder `src/`:
 
-- **`src/routes/`**: Berisi routing ElysiaJS (menangani HTTP request dan response).
-  - Nama file dibuat dengan format kebap-case: `users-route.ts`
-- **`src/services/`**: Berisi logic bisnis aplikasi (query ke DB, validasi, hashing/checking password).
-  - Nama file dibuat dengan format kebap-case: `users-service.ts`
+- **`src/routes/users-route.ts`**: Berisi routing API menggunakan ElysiaJS. Di sini kita akan menambahkan endpoint `GET /current`.
+- **`src/services/users-service.ts`**: Berisi logic bisnis. Tempat kita membuat fungsi untuk memvalidasi token dan mengambil data user.
 
 ---
 
@@ -53,38 +42,34 @@ Implementasikan kode dengan memisahkannya berdasarkan tanggung jawab (Separation
 
 Silakan ikuti langkah-langkah di bawah ini secara berurutan:
 
-### Langkah 1: Update Schema Database
+### Langkah 1: Buat Logic Bisnis Get Current User (Service Layer)
 
-1. Buka file `src/db/schema.ts`.
-2. Tambahkan deklarasi tabel `sessions` menggunakan Drizzle ORM sesuai dengan spesifikasi kolom di atas.
-3. Pastikan kolom `user_id` memiliki referensi (foreign key) ke tabel `users`.
-4. Jalankan perintah untuk _generate_ migration dan jalankan migrasi database agar tabel tercipta di DB lokal (misalnya menggunakan command `bun run db:generate` dan `bun run db:push`, sesuaikan dengan script migrate yang ada di `package.json`).
-
-### Langkah 2: Buat Logic Bisnis Login (Service Layer)
-
-1. Buka (atau buat jika belum ada) file `src/services/users-service.ts`.
-2. Buat fungsi baru (contoh: `loginUser(payload)`).
+1. Buka file `src/services/users-service.ts`.
+2. Buat fungsi baru (contoh: `getCurrentUser(token: string)`).
 3. **Logic di dalam fungsi:**
-   - Cari user di database berdasarkan `email` yang dikirim.
-   - Jika user **tidak ditemukan**, berikan _throw error_ atau kembalikan response gagal.
-   - Jika user **ditemukan**, bandingkan `password` plain text dari request dengan password hash yang tersimpan di DB menggunakan helper bcrypt/argon2 yang sebelumnya sudah ada (pastikan password dicek dengan benar).
-   - Jika password **salah**, berikan _throw error_ (`"Email atau password salah"`).
-   - Jika kredensial **benar**, ciptakan token UUID baru menggunakan library crypto atau standar UUID generator (`crypto.randomUUID()`).
-   - Lakukan perintah `INSERT` data ke tabel `sessions` untuk menyimpan asosisasi `token` tersebut dengan `user_id` terkait.
-   - Return token (string UUID) sebagai kembalian (output) dari fungsi ini.
+   - Karena token disimpan di tabel `sessions`, maka lakukan query untuk mencari data relasi table `sessions` dan `users` yang memiliki token sama dengan token dari parameter.
+   - Contoh query (menggunakan Drizzle ORM): Lakukan `select` ke tabel `sessions` yang di-`innerJoin` ke tabel `users` pada field `user_id`, dengan kondisi `eq(sessions.token, token)`.
+   - Jika data **tidak ditemukan**, lemparkan error (_throw new Error("Unauthorized")_).
+   - Jika data **ditemukan**, kembalikan (return) objek data user tersebut yang memuat field `id`, `name`, `email`, dan `createdAt`.
 
-### Langkah 3: Buat Routing API (Route Layer)
+### Langkah 2: Buat Routing API (Route Layer)
 
 1. Buka file `src/routes/users-route.ts`.
-2. Tambahkan route baru menggunakan framework Elysia dengan endpoint `POST /api/users/login`.
-3. Validasi body menggunakan `t` validator bawaan Elysia untuk memastikan `email` dan `password` bertipe `string` dan wajib dikirim.
-4. Di dalam handler, panggil fungsi service `loginUser` yang telah dibuat pada Langkah 2.
-5. Tangani hasil kembaliannya.
-   - Jika sukses, format data menjadi `{ "data": "isi_token" }`.
-   - Lakukan blok `try...catch` atau _error handling_ Elysia untuk menangkap error gagal login, dan ubah respons menjadi `{ "error": "Email atau password salah" }` dengan HTTP Status 401.
+2. Tambahkan route baru pada instance `Elysia` dari path user (tambahkan chain `.get("/current", handler)`).
+3. Di dalam handler, ambil nilai token dari HTTP header. Di ElysiaJS, bisa mengakses `headers` atau `bearer` (jika menggunakan `@elysiajs/bearer`). Jika hanya menggunakan headers standar, ambil nilai dari `headers.authorization`.
+4. Lakukan pengecekan:
+   - Pastikan header _Authorization_ tidak kosong dan dimulai dengan teks `Bearer `.
+   - Jika tidak valid, kembalikan HTTP Status `401` dengan respon `{ "error": "Unauthorized" }`.
+   - Ekstrak _token_ dengan menghapus awalan `Bearer ` (misal `.split(" ")[1]`).
+   - Panggil class `UsersService.getCurrentUser(token)`.
+5. Tangani kembalian atau responnya dengan struktur `try...catch`:
+   - Jika **sukses**, kembalikan response JSON: `{ data: userData }`.
+   - Jika **gagal** (masuk ke blok catch), set status `set.status = 401` dan kembalikan `{ error: "Unauthorized" }`.
 
-### Langkah 4: Registrasikan Route
+### Langkah 3: Testing Endpoint
 
-1. Buka entry point aplikasi utama, biasanya di `src/index.ts`.
-2. Pastikan file `users-route.ts` diimpor dan dipasang (`app.use(usersRoute)`) ke dalam aplikasi utama Elysia.
-3. Jalankan server lokal aplikasi (`bun run dev`) dan lakukan testing menggunakan Postman, cURL, atau Thunder Client untuk memastikan request sukses dan request gagal (error message) sesuai dengan ekspektasi.
+1. Jalankan aplikasi menggunakan `bun run dev`.
+2. Lakukan proses **login** terlebih dahulu ke `/api/users/login` untuk mendapatkan `token` yang valid.
+3. Copas `token` tersebut.
+4. Lakukan request `GET` ke http://localhost:3000/api/users/current menggunakan Postman, cURL, atau Thunder Client dengan menambahkan Header `Authorization: Bearer <paste_token_disini>`.
+5. Pastikan jika token benar mengembalikan response data user, jika token diubah/salah akan mengembalikan pesan `Unauthorized`.
