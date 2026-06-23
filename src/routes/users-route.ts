@@ -2,6 +2,17 @@ import { Elysia, t } from "elysia";
 import { UsersService } from "../services/users-service";
 
 export const usersRoute = new Elysia({ prefix: "/api/users" })
+  .derive(({ headers }) => {
+    const authHeader = headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      return {
+        token: authHeader.split(" ")[1],
+      };
+    }
+    return {
+      token: null,
+    };
+  })
   .post(
     "/",
     async ({ body, set }) => {
@@ -43,14 +54,12 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
       }),
     },
   )
-  .get("/current", async ({ headers, set }) => {
+  .get("/current", async ({ token, set }) => {
     try {
-      const authHeader = headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      if (!token) {
         throw new Error("Unauthorized");
       }
 
-      const token = authHeader.split(" ")[1];
       const user = await UsersService.getCurrentUser(token);
       return { data: user };
     } catch (error: any) {
@@ -58,14 +67,12 @@ export const usersRoute = new Elysia({ prefix: "/api/users" })
       return { error: "Unauthorized" };
     }
   })
-  .get("/logout", async ({ headers, set }) => {
+  .delete("/logout", async ({ token, set }) => {
     try {
-      const authHeader = headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      if (!token) {
         throw new Error("Unauthorized");
       }
 
-      const token = authHeader.split(" ")[1];
       await UsersService.logout(token);
       return { data: "Ok" };
     } catch (error: any) {
